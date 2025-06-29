@@ -232,7 +232,7 @@ func main() {
 	server := &http.Server{
 		Addr:      port,
 		TLSConfig: tlsConfig,
-		Handler:   mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.Cors(mux))),
+		Handler:   mw.CompressionMiddleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.Cors(mux)))),
 	}
 	fmt.Println("Server is running on port ", port)
 	err := server.ListenAndServeTLS(cert, key)
