@@ -1,12 +1,13 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"strings"
+	mw "schoolManagement/internal/api/middlewares"
 )
 
 // Even though the user struct is private (not starting with uppercase), the field values after made public (Name, Age and City).
@@ -75,21 +76,6 @@ func teachersHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.Method, r.URL.Path)
 	switch r.Method {
 	case http.MethodGet:
-		/**
-		For path parameters, we always follow the plural endpoint (which could be a name associated with the table or db) followed by the value;
-		Eg: /teachers/{id} -> /teachers/1234 ; which implies 1234 from teachers;
-		*/
-		var pathParams string = strings.Trim(r.URL.Path, "/teachers/")
-		fmt.Println(pathParams)
-
-		/**
-		Query Params
-		In this api lets accept -> name, age
-		*/
-		query := r.URL.Query()
-		name := query.Get("name")
-		age := query.Get("age")
-		fmt.Printf("Name: %s, Age: %s\n", name, age)
 		_, err := w.Write([]byte("Hello this is a GET method call to teachers api!"))
 		if err != nil {
 			fmt.Println("Error from teachers handler ", err)
@@ -231,13 +217,25 @@ func execsHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	const port string = ":3000"
 
-	http.HandleFunc("/", rootHandler)
-	http.HandleFunc("/students", studentsHandler)
-	http.HandleFunc("/teachers/", teachersHandler)
-	http.HandleFunc("/execs", execsHandler)
+	cert := "cert.pem"
+	key := "key.pem"
 
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", rootHandler)
+	mux.HandleFunc("/students", studentsHandler)
+	mux.HandleFunc("/teachers/", teachersHandler)
+	mux.HandleFunc("/execs", execsHandler)
+
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	server := &http.Server{
+		Addr:      port,
+		TLSConfig: tlsConfig,
+		Handler:   mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.Cors(mux))),
+	}
 	fmt.Println("Server is running on port ", port)
-	err := http.ListenAndServe(port, nil)
+	err := server.ListenAndServeTLS(cert, key)
 	if err != nil {
 		log.Fatal("Error starting the server : ", err)
 	}
