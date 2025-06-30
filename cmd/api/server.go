@@ -4,11 +4,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	mw "schoolManagement/internal/api/middlewares"
-	"time"
+	"strconv"
+	"strings"
+	"sync"
 )
 
 // Even though the user struct is private (not starting with uppercase), the field values after made public (Name, Age and City).
@@ -72,75 +73,152 @@ func studentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type teacher struct {
+	Id        int    `json:"id"`
+	FirstName string `json:"first_name,omitempty"`
+	LastName  string `json:"last_name,omitempty"`
+	Class     string `json:"class,omitempty"`
+	Subject   string `json:"subject,omitempty"`
+}
+
+var (
+	teachers = make(map[int]teacher)
+	mutex    = &sync.Mutex{}
+	nextId   = 1
+)
+
+func init() {
+	teachers[nextId] = teacher{
+		Id:        nextId,
+		FirstName: "John",
+		LastName:  "Doe",
+		Class:     "9A",
+		Subject:   "Mathematics",
+	}
+	nextId++
+	teachers[nextId] = teacher{
+		Id:        nextId,
+		FirstName: "Jane",
+		LastName:  "Smith",
+		Class:     "10A",
+		Subject:   "Physics",
+	}
+	nextId++
+	teachers[nextId] = teacher{
+		Id:        nextId,
+		FirstName: "Jane",
+		LastName:  "Doe",
+		Class:     "10A",
+		Subject:   "Physics",
+	}
+	nextId++
+}
+
+// getTeachersHandler - this will handle the business logic for get teachers;
+func getTeachersHandler(w http.ResponseWriter, r *http.Request) {
+
+	// Extract path params;
+	path := strings.TrimPrefix(r.URL.Path, "/teachers/")
+	idStr := strings.TrimSuffix(path, "/")
+
+	// Extract query params;
+	firstName := r.URL.Query().Get("first_name")
+	lastName := r.URL.Query().Get("last_name")
+
+	teacherList := make([]teacher, 0, len(teachers))
+
+	var emptyVal = true
+
+	if idStr != "" {
+		for _, value := range teachers {
+			if idStr == strconv.Itoa(value.Id) {
+				emptyVal = false
+				teacherList = append(teacherList, value)
+			}
+		}
+	} else {
+		for _, value := range teachers {
+			if (firstName == "" || value.FirstName == firstName) && (lastName == "" || value.LastName == lastName) {
+				emptyVal = false
+				teacherList = append(teacherList, value)
+			}
+		}
+	}
+
+	if emptyVal {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	response := struct {
+		Status string    `json:"status"`
+		Count  int       `json:"count"`
+		Data   []teacher `json:"data"`
+	}{
+		Status: "Success",
+		Count:  len(teachers),
+		Data:   teacherList,
+	}
+
+	// Sets the content type as JSON;
+	w.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(w).Encode(response)
+	if err != nil {
+		fmt.Println("Error from getTeachersHandler ", err)
+	}
+
+}
+
+// addTeachersHandler - handles the incoming post requests;
+func addTeachersHandler(w http.ResponseWriter, r *http.Request) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	var requestData []teacher
+	err := json.NewDecoder(r.Body).Decode(&requestData)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	addedTeachers := make([]teacher, len(requestData))
+	for i, requestDatum := range requestData {
+		requestDatum.Id = nextId
+		teachers[nextId] = requestDatum
+		addedTeachers[i] = requestDatum
+		nextId++
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	response := struct {
+		Status string    `json:"status"`
+		Count  int       `json:"count"`
+		Data   []teacher `json:"data"`
+	}{
+		Status: "Success",
+		Count:  len(addedTeachers),
+		Data:   addedTeachers,
+	}
+
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+}
+
 // teachersHandler - Handler for teachers route;
 func teachersHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.Method, r.URL.Path)
 	switch r.Method {
 	case http.MethodGet:
-		_, err := w.Write([]byte("Hello this is a GET method call to teachers api!"))
-		if err != nil {
-			fmt.Println("Error from teachers handler ", err)
-		}
+		// Call the get handler function;
+		getTeachersHandler(w, r)
 		return
 	case http.MethodPost:
-		// Parsing form post data;
-		err := r.ParseForm()
-		if err != nil {
-			http.Error(w, "Error parsing form", http.StatusBadRequest)
-		}
-
-		fmt.Println("Form : ", r.Form)
-
-		response := make(map[string]interface{})
-		for key, value := range r.Form {
-			response[key] = value[0]
-		}
-
-		// Processing raw body;
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, "Error reading body", http.StatusBadRequest)
-		}
-		defer func() {
-			err := r.Body.Close()
-			if err != nil {
-				fmt.Println("Error closing body")
-			}
-		}()
-
-		fmt.Println("Processed response (RAW): ", string(body))
-		fmt.Println("Processed response (X-WWW-FORM): ", response)
-
-		// If you expect json data then unmarshal it;
-		var userInstance user
-		err = json.Unmarshal(body, &userInstance)
-		if err != nil {
-			http.Error(w, "Error parsing body", http.StatusBadRequest)
-			return
-		}
-
-		fmt.Println("User instance after unmarshalling ", userInstance)
-
-		fmt.Println("Body : ", r.Body)
-		fmt.Println("Form : ", r.Form)
-		fmt.Println("Header : ", r.Header)
-		fmt.Println("Context : ", r.Context())
-		fmt.Println("Content length : ", r.ContentLength)
-		fmt.Println("Host  : ", r.Host)
-		fmt.Println("Method  : ", r.Method)
-		fmt.Println("Protocol  : ", r.Proto)
-		fmt.Println("Remote address : ", r.RemoteAddr)
-		fmt.Println("Request URI : ", r.RequestURI)
-		fmt.Println("Request TLS : ", r.TLS)
-		fmt.Println("Trailer : ", r.Trailer)
-		fmt.Println("Transfer Encoding : ", r.TransferEncoding)
-		fmt.Println("User agent : ", r.UserAgent())
-		fmt.Println("Port : ", r.URL.Port())
-
-		_, err = w.Write([]byte("Hello this is a POST method call to teachers api!"))
-		if err != nil {
-			fmt.Println("Error from teachers handler ", err)
-		}
+		// Call the post handler function;
+		addTeachersHandler(w, r)
 		return
 	case http.MethodPatch:
 		_, err := w.Write([]byte("Hello this is a PATCH method call to teachers api!"))
@@ -232,17 +310,23 @@ func main() {
 
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 
-	rl := mw.NewRateLimiter(5, time.Minute)
-
-	hppOptions := mw.HPPOptions{
-		CheckQuery:                  true,
-		CheckBody:                   true,
-		CheckBodyOnlyForContentType: "application/x-www-form-urlencoded",
-		WhiteList:                   []string{"name", "age"},
-	}
+	// Should be uncommented while using all middlewares;
+	//rl := mw.NewRateLimiter(5, time.Minute)
+	//
+	//hppOptions := mw.HPPOptions{
+	//	CheckQuery:                  true,
+	//	CheckBody:                   true,
+	//	CheckBodyOnlyForContentType: "application/x-www-form-urlencoded",
+	//	WhiteList:                   []string{"name", "age"},
+	//}
 
 	// All the other middlewares are passed as argument;
-	secureMux := mw.Cors(rl.Middleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.CompressionMiddleware(mw.Hpp(hppOptions)(mw.Cors(mux)))))))
+	//secureMux := mw.Cors(rl.Middleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.CompressionMiddleware(mw.Hpp(hppOptions)(mw.Cors(mux)))))))
+	// An enhanced and efficient way to apply middlewares;
+	//secureMux := applyMiddleWares(mux, mw.Hpp(hppOptions), mw.CompressionMiddleware, mw.SecurityHandler, mw.ResponseTimeMiddleware, rl.Middleware, mw.Cors)
+
+	// For this server we will use mw.SecurityHandler alone now;
+	secureMux := mw.SecurityHandler(mux)
 
 	server := &http.Server{
 		Addr:      port,
@@ -254,4 +338,14 @@ func main() {
 	if err != nil {
 		log.Fatal("Error starting the server : ", err)
 	}
+}
+
+// Middleware is a function that wraps a http.Handler with additional functionality
+type Middleware func(http.Handler) http.Handler
+
+func applyMiddleWares(handler http.Handler, middleware ...Middleware) http.Handler {
+	for _, middleware := range middleware {
+		handler = middleware(handler)
+	}
+	return handler
 }
