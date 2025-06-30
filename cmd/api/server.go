@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	mw "schoolManagement/internal/api/middlewares"
+	"time"
 )
 
 // Even though the user struct is private (not starting with uppercase), the field values after made public (Name, Age and City).
@@ -229,10 +230,12 @@ func main() {
 
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 
+	rl := mw.NewRateLimiter(5, time.Minute)
+
 	server := &http.Server{
 		Addr:      port,
 		TLSConfig: tlsConfig,
-		Handler:   mw.CompressionMiddleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.Cors(mux)))),
+		Handler:   rl.Middleware(mw.CompressionMiddleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.Cors(mux))))),
 	}
 	fmt.Println("Server is running on port ", port)
 	err := server.ListenAndServeTLS(cert, key)
