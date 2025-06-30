@@ -182,6 +182,8 @@ func execsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	case http.MethodPost:
+		form := r.Form
+		fmt.Println("Form : ", form)
 		_, err := w.Write([]byte("Hello this is a POST method call to execs api!"))
 		if err != nil {
 			fmt.Println("Error from execs handler ", err)
@@ -232,10 +234,20 @@ func main() {
 
 	rl := mw.NewRateLimiter(5, time.Minute)
 
+	hppOptions := mw.HPPOptions{
+		CheckQuery:                  true,
+		CheckBody:                   true,
+		CheckBodyOnlyForContentType: "application/x-www-form-urlencoded",
+		WhiteList:                   []string{"name", "age"},
+	}
+
+	// All the other middlewares are passed as argument;
+	secureMux := mw.Hpp(hppOptions)(rl.Middleware(mw.CompressionMiddleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.Cors(mux))))))
+
 	server := &http.Server{
 		Addr:      port,
 		TLSConfig: tlsConfig,
-		Handler:   rl.Middleware(mw.CompressionMiddleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.Cors(mux))))),
+		Handler:   secureMux,
 	}
 	fmt.Println("Server is running on port ", port)
 	err := server.ListenAndServeTLS(cert, key)
