@@ -242,7 +242,7 @@ func main() {
 	}
 
 	// All the other middlewares are passed as argument;
-	secureMux := mw.Hpp(hppOptions)(rl.Middleware(mw.CompressionMiddleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.Cors(mux))))))
+	secureMux := mw.Cors(rl.Middleware(mw.ResponseTimeMiddleware(mw.SecurityHandler(mw.CompressionMiddleware(mw.Hpp(hppOptions)(mw.Cors(mux)))))))
 
 	server := &http.Server{
 		Addr:      port,

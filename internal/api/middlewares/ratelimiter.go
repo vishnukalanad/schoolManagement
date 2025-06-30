@@ -44,6 +44,8 @@ func (rl *RateLimiter) resetVisitorCount() {
 
 // Middleware is the actual HTTP middleware function that applies rate limiting logic.
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
+	fmt.Println("RATE LIMITER MIDDLEWARE STARTED")
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// Step 1: Lock the mutex to protect the visitor map from concurrent access
@@ -66,5 +68,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 		// Step 5: Forward the request to the next handler if within the limit
 		next.ServeHTTP(w, r)
+		fmt.Println("RATE LIMITER MIDDLEWARE ENDED")
+
 	})
 }

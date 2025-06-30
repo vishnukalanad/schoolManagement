@@ -17,6 +17,8 @@ type HPPOptions struct {
 // Hpp returns a middleware that removes duplicate and/or unapproved HTTP parameters
 // based on the provided options.
 func Hpp(options HPPOptions) func(handler http.Handler) http.Handler {
+	fmt.Println("HPP MIDDLEWARE STARTED")
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -34,6 +36,8 @@ func Hpp(options HPPOptions) func(handler http.Handler) http.Handler {
 
 			// Call the next handler in the chain
 			next.ServeHTTP(w, r)
+			fmt.Println("HPP MIDDLEWARE ENDED")
+
 		})
 	}
 }

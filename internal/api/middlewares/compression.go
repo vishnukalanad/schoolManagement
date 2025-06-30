@@ -9,6 +9,7 @@ import (
 
 // CompressionMiddleware is a middleware that compresses HTTP responses using gzip
 func CompressionMiddleware(next http.Handler) http.Handler {
+	fmt.Println("COMPRESSION MIDDLEWARE STARTED")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// Step 1: Check if the client supports gzip encoding

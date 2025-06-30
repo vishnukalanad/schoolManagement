@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"fmt"
 	"net/http"
 )
 
@@ -10,6 +11,8 @@ var allowedOrigins = []string{
 }
 
 func Cors(next http.Handler) http.Handler {
+	fmt.Println("CORS MIDDLEWARE STARTED")
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 
@@ -30,6 +33,8 @@ func Cors(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+		fmt.Println("CORS MIDDLEWARE ENDED")
+
 	})
 }
 
