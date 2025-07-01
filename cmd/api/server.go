@@ -3,10 +3,13 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/joho/godotenv"
 	"log"
 	"net/http"
+	"os"
 	mw "schoolManagement/internal/api/middlewares"
 	"schoolManagement/internal/api/routers"
+	"schoolManagement/internal/repositories/sqlconnect"
 )
 
 // Even though the user struct is private (not starting with uppercase), the field values after made public (Name, Age and City).
@@ -18,7 +21,18 @@ type user struct {
 }
 
 func main() {
-	const port string = ":3000"
+	// The godotenv.Load() makes sure that the .env variables are picked instead of system env variable by the os.Getenv()
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	var port = os.Getenv("PORT")
+
+	_, err = sqlconnect.ConnectDb()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	cert := "cert.pem"
 	key := "key.pem"
@@ -49,7 +63,7 @@ func main() {
 		Handler:   secureMux,
 	}
 	fmt.Println("Server is running on port ", port)
-	err := server.ListenAndServeTLS(cert, key)
+	err = server.ListenAndServeTLS(cert, key)
 	if err != nil {
 		log.Fatal("Error starting the server : ", err)
 	}
