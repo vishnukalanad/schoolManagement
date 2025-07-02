@@ -45,6 +45,22 @@ func init() {
 	nextId++
 }
 
+func isValidSort(order string) bool {
+	return order == "asc" || order == "desc"
+}
+
+func isValidField(field string) bool {
+	fields := map[string]bool{
+		"first_name": true,
+		"last_name":  true,
+		"email":      true,
+		"class":      true,
+		"subject":    true,
+	}
+
+	return fields[field]
+}
+
 // getTeachersHandler - this will handle the business logic for get teachers;
 func getTeachersHandler(w http.ResponseWriter, r *http.Request) {
 	db, err := sqlconnect.ConnectDb()
@@ -74,7 +90,6 @@ func getTeachersHandler(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Do records not found", http.StatusNotFound)
 			fmt.Println("Error", err)
-
 			return
 		} else if err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -86,36 +101,38 @@ func getTeachersHandler(w http.ResponseWriter, r *http.Request) {
 
 	} else {
 
-		val, err := db.Query("SELECT * FROM teachers")
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "Do records not found", http.StatusNotFound)
-			fmt.Println("Error", err)
+		query := "SELECT id, first_name, last_name, class, subject, email  FROM teachers WHERE 1=1"
 
-			return
-		} else if err != nil {
+		var args []interface{}
+
+		query, args = addFilters(r, query, args)
+
+		query = sortByQueryParams(r, query)
+
+		rows, err := db.Query(query, args...)
+		if err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			fmt.Println("Error", err)
+			fmt.Println("Error at query execution : ", err)
 			return
 		}
 
 		defer func() {
-			err := val.Close()
+			err := rows.Close()
 			if err != nil {
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}
 		}()
 
-		for val.Next() {
-			var v models.Teacher
-			err = val.Scan(&v.Id, &v.FirstName, &v.LastName, &v.Class, &v.Subject, &v.Email)
-			if errors.Is(err, sql.ErrNoRows) {
-				http.Error(w, "Do records not found", http.StatusNotFound)
+		for rows.Next() {
+			var teacher models.Teacher
+			err = rows.Scan(&teacher.Id, &teacher.FirstName, &teacher.LastName, &teacher.Class, &teacher.Subject, &teacher.Email)
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				fmt.Println("Error", err)
 				return
 			}
-			teacherList = append(teacherList, v)
+			teacherList = append(teacherList, teacher)
 		}
-
-		fmt.Println("All teachers : ", teacherList)
 	}
 
 	response := struct {
@@ -135,6 +152,52 @@ func getTeachersHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Error from getTeachersHandler ", err)
 	}
 
+}
+
+func sortByQueryParams(r *http.Request, query string) string {
+	sortParams := r.URL.Query()["sortBy"]
+	if len(sortParams) > 0 {
+		query += " ORDER BY"
+		for i, val := range sortParams {
+			parts := strings.Split(val, ":")
+			if len(parts) != 2 {
+				continue
+			}
+			field, order := parts[0], parts[1]
+
+			if !isValidSort(order) || !isValidField(field) {
+				continue
+			}
+
+			// if more than one condition for sorting, then separate them by comma (,);
+			if i > 0 {
+				query += ","
+			}
+
+			query += " " + field + " " + order
+
+		}
+	}
+	return query
+}
+
+func addFilters(r *http.Request, query string, args []interface{}) (string, []interface{}) {
+	params := map[string]string{
+		"first_name": "first_name",
+		"last_name":  "last_name",
+		"email":      "email",
+		"class":      "class",
+		"subject":    "subject",
+	}
+
+	for param, dbField := range params {
+		value := r.URL.Query().Get(param)
+		if value != "" {
+			query += " AND " + dbField + " = ?"
+			args = append(args, value)
+		}
+	}
+	return query, args
 }
 
 // addTeachersHandler - handles the incoming post requests;
