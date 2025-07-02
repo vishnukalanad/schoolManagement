@@ -27,8 +27,7 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
-	var port = os.Getenv("PORT")
-
+	var port = os.Getenv("API_PORT")
 	_, err = sqlconnect.ConnectDb()
 	if err != nil {
 		log.Fatal(err)

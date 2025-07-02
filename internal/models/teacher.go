@@ -6,4 +6,5 @@ type Teacher struct {
 	LastName  string `json:"last_name,omitempty"`
 	Class     string `json:"class,omitempty"`
 	Subject   string `json:"subject,omitempty"`
+	Email     string `json:"email,omitempty"`
 }
