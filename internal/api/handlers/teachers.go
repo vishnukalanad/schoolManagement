@@ -9,41 +9,11 @@ import (
 	"schoolManagement/internal/models"
 	"schoolManagement/internal/repositories/sqlconnect"
 	"strings"
-	"sync"
 )
 
 var (
 	teachers = make(map[int]models.Teacher)
-	mutex    = &sync.Mutex{}
-	nextId   = 1
 )
-
-func init() {
-	teachers[nextId] = models.Teacher{
-		Id:        nextId,
-		FirstName: "John",
-		LastName:  "Doe",
-		Class:     "9A",
-		Subject:   "Mathematics",
-	}
-	nextId++
-	teachers[nextId] = models.Teacher{
-		Id:        nextId,
-		FirstName: "Jane",
-		LastName:  "Smith",
-		Class:     "10A",
-		Subject:   "Physics",
-	}
-	nextId++
-	teachers[nextId] = models.Teacher{
-		Id:        nextId,
-		FirstName: "Jane",
-		LastName:  "Doe",
-		Class:     "10A",
-		Subject:   "Physics",
-	}
-	nextId++
-}
 
 func isValidSort(order string) bool {
 	return order == "asc" || order == "desc"
