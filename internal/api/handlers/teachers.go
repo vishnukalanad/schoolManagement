@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"schoolManagement/internal/models"
 	"schoolManagement/internal/repositories/sqlconnect"
+	"strconv"
 	"strings"
 )
 
@@ -249,6 +250,66 @@ func addTeachersHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func updateTeachersHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := strings.TrimPrefix(r.URL.Path, "/teachers/")
+	idStr = strings.TrimSuffix(idStr, "/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : Invalid Teacher ID", err)
+		return
+	}
+
+	var updatedTeachers models.Teacher
+	err = json.NewDecoder(r.Body).Decode(&updatedTeachers)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : Invalid Teacher ID", err)
+		return
+	}
+
+	db, err := sqlconnect.ConnectDb()
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : DB connection failed!", err)
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			fmt.Println("Close failed", err)
+		}
+	}()
+
+	var existingTeacher models.Teacher
+	err = db.QueryRow("SELECT id, first_name, last_name, email, class, subject FROM teachers WHERE id = ?", id).Scan(&existingTeacher.Id, &existingTeacher.FirstName, &existingTeacher.LastName, &existingTeacher.Email, &existingTeacher.Class, &existingTeacher.Subject)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Teacher not found!", http.StatusNotFound)
+			fmt.Println("Err : Teacher not found", err)
+			return
+		}
+		http.Error(w, "Query failed!", http.StatusInternalServerError)
+		fmt.Println("Err : Teacher not found", err)
+		return
+	}
+
+	updatedTeachers.Id = existingTeacher.Id
+	_, err = db.Exec("UPDATE teachers SET first_name = ?, last_name = ?, class = ?, subject = ?, email = ? WHERE id = ?", updatedTeachers.FirstName, updatedTeachers.LastName, updatedTeachers.Class, updatedTeachers.Subject, updatedTeachers.Email, updatedTeachers.Id)
+	if err != nil {
+		http.Error(w, "Update failed!", http.StatusInternalServerError)
+		fmt.Println("Err : Update failed", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(updatedTeachers)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+}
+
 // TeachersHandler - Handler for teachers route;
 func TeachersHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.Method, r.URL.Path)
@@ -262,10 +323,7 @@ func TeachersHandler(w http.ResponseWriter, r *http.Request) {
 		addTeachersHandler(w, r)
 		return
 	case http.MethodPatch:
-		_, err := w.Write([]byte("Hello this is a PATCH method call to teachers api!"))
-		if err != nil {
-			fmt.Println("Error from teachers handler ", err)
-		}
+		updateTeachersHandler(w, r)
 		return
 	case http.MethodPut:
 		_, err := w.Write([]byte("Hello this is a PUT method call to teachers api!"))
