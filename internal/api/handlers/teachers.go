@@ -87,7 +87,7 @@ func AddTeachersHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -97,7 +97,7 @@ func UpdateTeachersHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		fmt.Println("Err : Invalid Teacher ID", err)
 		return
 	}
@@ -105,20 +105,20 @@ func UpdateTeachersHandler(w http.ResponseWriter, r *http.Request) {
 	var updatedTeachers models.Teacher
 	err = json.NewDecoder(r.Body).Decode(&updatedTeachers)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		fmt.Println("Err : Invalid Teacher ID", err)
 		return
 	}
 
 	err = sqlconnect.UpdateTeachersDbHandler(id, updatedTeachers)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(updatedTeachers)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
@@ -149,7 +149,7 @@ func PatchTeacherHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		fmt.Println("Err : Invalid Teacher ID", err)
 		return
 	}
@@ -157,7 +157,7 @@ func PatchTeacherHandler(w http.ResponseWriter, r *http.Request) {
 	var updates map[string]interface{}
 	err = json.NewDecoder(r.Body).Decode(&updates)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		fmt.Println("Err : Invalid Teacher ID", err)
 		return
 	}
@@ -170,7 +170,7 @@ func PatchTeacherHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(existingTeacher)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -180,14 +180,14 @@ func DeleteTeacherHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		fmt.Println("Err : Invalid Teacher ID", err)
 		return
 	}
 
 	err = sqlconnect.DeleteTeacherDbHandler(id)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

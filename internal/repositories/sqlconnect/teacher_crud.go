@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"schoolManagement/internal/models"
+	"schoolManagement/pkg/utils"
 	"strings"
 )
 
@@ -83,7 +84,7 @@ func GetTeachersDbHandler(r *http.Request, teachersList []models.Teacher) (error
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Err : DB connection failed!", err)
-		return nil, nil
+		return utils.HandleError(err, "Err : DB connection failed!"), nil
 	}
 	defer func() {
 		err := db.Close()
@@ -103,7 +104,7 @@ func GetTeachersDbHandler(r *http.Request, teachersList []models.Teacher) (error
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Error at query execution : ", err)
-		return nil, nil
+		return utils.HandleError(err, "Err : DB connection failed!"), nil
 	}
 
 	defer func() {
@@ -119,7 +120,7 @@ func GetTeachersDbHandler(r *http.Request, teachersList []models.Teacher) (error
 		if err != nil {
 			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			fmt.Println("Error", err)
-			return nil, nil
+			return utils.HandleError(err, "Err : Internal server error!"), nil
 		}
 		teachersList = append(teachersList, teacher)
 	}
@@ -131,7 +132,7 @@ func GetTeacherDbHandler(idStr string) (error, models.Teacher) {
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Err : DB connection failed!", err)
-		return nil, models.Teacher{}
+		return utils.HandleError(err, "Err : DB connection failed!"), models.Teacher{}
 	}
 	defer func() {
 		err := db.Close()
@@ -146,11 +147,11 @@ func GetTeacherDbHandler(idStr string) (error, models.Teacher) {
 	if errors.Is(err, sql.ErrNoRows) {
 		//http.Error(w, "Do records not found", http.StatusNotFound)
 		fmt.Println("Error", err)
-		return nil, models.Teacher{}
+		return utils.HandleError(err, "Err : DB records not found!"), models.Teacher{}
 	} else if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Error", err)
-		return nil, models.Teacher{}
+		return utils.HandleError(err, "Err : Internal server error!"), models.Teacher{}
 	}
 	return err, teacher
 }
@@ -160,7 +161,7 @@ func AddTeacherDbHandler(r *http.Request, newTeachers []models.Teacher) (error, 
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Err : DB connection failed!", err)
-		return nil, nil
+		return utils.HandleError(err, "Err : DB connection failed!"), nil
 	}
 	defer func() {
 		err := db.Close()
@@ -174,7 +175,7 @@ func AddTeacherDbHandler(r *http.Request, newTeachers []models.Teacher) (error, 
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Insert failed", err)
-		return nil, nil
+		return utils.HandleError(err, "Err : Insert failed!"), nil
 	}
 	defer func() {
 		err := stmt.Close()
@@ -189,7 +190,7 @@ func AddTeacherDbHandler(r *http.Request, newTeachers []models.Teacher) (error, 
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Insert failed", err)
-		return nil, nil
+		return utils.HandleError(err, "Err : Insert failed!"), nil
 	}
 
 	addedTeachers := make([]models.Teacher, len(newTeachers))
@@ -199,13 +200,13 @@ func AddTeacherDbHandler(r *http.Request, newTeachers []models.Teacher) (error, 
 		if err != nil {
 			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			fmt.Println("Err : Data insertion to DB failed!", err)
-			return nil, nil
+			return utils.HandleError(err, "Err : Data insertion to DB failed!"), nil
 		}
 		lastId, err := res.LastInsertId()
 		if err != nil {
 			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			fmt.Println("Err : Get ID from DB failed!", err)
-			return nil, nil
+			return utils.HandleError(err, "Err : Get ID from DB failed!"), nil
 		}
 
 		teacher.Id = int(lastId)
@@ -219,7 +220,7 @@ func UpdateTeachersDbHandler(id int, updatedTeachers models.Teacher) error {
 	db, err := ConnectDb()
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		fmt.Println("Err : DB connection failed!", err)
+		fmt.Println("Err : Internal server error!", err)
 	}
 
 	defer func() {
@@ -236,11 +237,11 @@ func UpdateTeachersDbHandler(id int, updatedTeachers models.Teacher) error {
 		if errors.Is(err, sql.ErrNoRows) {
 			//http.Error(w, "Teacher not found!", http.StatusNotFound)
 			fmt.Println("Err : Teacher not found", err)
-			return nil
+			return utils.HandleError(err, "Err : Teacher not found")
 		}
 		//http.Error(w, "Query failed!", http.StatusInternalServerError)
 		fmt.Println("Err : Teacher not found", err)
-		return nil
+		return utils.HandleError(err, "Err : Teacher not found")
 	}
 
 	updatedTeachers.Id = existingTeacher.Id
@@ -248,9 +249,9 @@ func UpdateTeachersDbHandler(id int, updatedTeachers models.Teacher) error {
 	if err != nil {
 		//http.Error(w, "Update failed!", http.StatusInternalServerError)
 		fmt.Println("Err : Update failed", err)
-		return nil
+		return utils.HandleError(err, "Err : Update failed")
 	}
-	return err
+	return utils.HandleError(err, "Internal server error!")
 }
 
 func PatchTeachersDbHandler(updates []map[string]interface{}) error {
@@ -440,7 +441,7 @@ func DeleteTeachersDbHandler(ids []int) (error, []int) {
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Err : DB connection failed!", err)
-		return err, nil
+		return utils.HandleError(err, "Err : DB connection failed!"), nil
 	}
 
 	defer func() {
@@ -456,7 +457,7 @@ func DeleteTeachersDbHandler(ids []int) (error, []int) {
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Err : Begin failed", err)
-		return err, nil
+		return utils.HandleError(err, "Err : Query failed!"), nil
 	}
 
 	statement, err := tx.Prepare("DELETE FROM teachers WHERE id = ?")
@@ -464,7 +465,7 @@ func DeleteTeachersDbHandler(ids []int) (error, []int) {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		tx.Rollback()
 		fmt.Println("Err : Prepare failed", err)
-		return err, nil
+		return utils.HandleError(err, "Err : Query prepare failed!"), nil
 	}
 
 	defer statement.Close()
@@ -476,7 +477,7 @@ func DeleteTeachersDbHandler(ids []int) (error, []int) {
 			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			tx.Rollback()
 			fmt.Println("Err : Delete failed", err)
-			return err, nil
+			return utils.HandleError(err, "Err : Delete failed"), nil
 		}
 
 		rowsAffected, err := res.RowsAffected()
@@ -484,7 +485,7 @@ func DeleteTeachersDbHandler(ids []int) (error, []int) {
 			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			tx.Rollback()
 			fmt.Println("Err : RowsAffected failed", err)
-			return err, nil
+			return utils.HandleError(err, "Err : RowsAffected failed"), nil
 		}
 
 		// If teacher was deleted, then push the id to deletedIds[];
@@ -498,7 +499,7 @@ func DeleteTeachersDbHandler(ids []int) (error, []int) {
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Err : Commit failed", err)
-		return err, nil
+		return utils.HandleError(err, "Err : Commit failed"), nil
 	}
 
 	if len(deletedIds) == 0 {
@@ -506,7 +507,7 @@ func DeleteTeachersDbHandler(ids []int) (error, []int) {
 		tx.Rollback()
 		//http.Error(w, fmt.Sprintf("ID(s) %d does not exist", ids), http.StatusNotFound)
 		fmt.Println("Err : Teachers not found", err)
-		return err, nil
+		return utils.HandleError(err, "Err : Teachers not found"), nil
 
 	}
 	return err, deletedIds
