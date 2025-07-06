@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"reflect"
 	"schoolManagement/internal/models"
 	"strings"
 )
@@ -249,4 +251,263 @@ func UpdateTeachersDbHandler(id int, updatedTeachers models.Teacher) error {
 		return nil
 	}
 	return err
+}
+
+func PatchTeachersDbHandler(updates []map[string]interface{}) error {
+	db, err := ConnectDb()
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : DB connection failed!", err)
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			fmt.Println("Close failed", err)
+		}
+	}()
+
+	// DB Transaction Beginning;
+	tx, err := db.Begin()
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : DB transaction failed!", err)
+		return err
+	}
+
+	for _, update := range updates {
+		id := fmt.Sprintf("%v", update["id"])
+		log.Println("TEACHER ID : ", id)
+
+		var teacherFromDb models.Teacher
+		err = db.QueryRow("SELECT id, first_name, last_name, email, class, subject FROM teachers WHERE id = ?", id).Scan(&teacherFromDb.Id,
+			&teacherFromDb.FirstName, &teacherFromDb.LastName, &teacherFromDb.Email, &teacherFromDb.Class, &teacherFromDb.Subject)
+		if err != nil {
+			tx.Rollback()
+			if errors.Is(err, sql.ErrNoRows) {
+				//http.Error(w, "Teacher not found!", http.StatusNotFound)
+				fmt.Println("Err : Teacher not found", err)
+				return err
+			}
+		}
+
+		// Apply updates using reflect;
+		teacherVal := reflect.ValueOf(&teacherFromDb).Elem()
+		teacherType := teacherVal.Type()
+
+		for k, v := range update {
+			if k == "id" {
+				continue // skips updating the id field;
+			}
+			for i := 0; i < teacherVal.NumField(); i++ {
+				field := teacherType.Field(i)
+				if field.Tag.Get("json") == k+",omitempty" {
+					fieldVal := teacherVal.Field(i)
+					if fieldVal.CanSet() {
+						val := reflect.ValueOf(v)
+						if val.Type().ConvertibleTo(fieldVal.Type()) {
+							fieldVal.Set(val.Convert(fieldVal.Type()))
+						} else {
+							err = tx.Rollback()
+							if err != nil {
+								//http.Error(w, "Invalid field value!", http.StatusBadRequest)
+								fmt.Println("Err : Invalid field value", err)
+								return err
+							}
+							break
+						}
+					}
+				}
+			}
+		}
+
+		_, err = tx.Exec("UPDATE teachers SET first_name = ?, last_name = ?, email = ?, class = ?, subject = ? WHERE id = ?", teacherFromDb.FirstName, teacherFromDb.LastName, teacherFromDb.Email, teacherFromDb.Class, teacherFromDb.Subject, id)
+		if err != nil {
+			tx.Rollback()
+			//http.Error(w, "Error updating teacher!", http.StatusInternalServerError)
+			fmt.Println("Err : update failed!", err)
+			return err
+		}
+
+	}
+
+	// Apply the commit;
+	err = tx.Commit()
+	if err != nil {
+		//http.Error(w, "Err : Commit failed!", http.StatusInternalServerError)
+		fmt.Println("Err : Commit failed!", err)
+		return err
+	}
+	return nil
+}
+
+func PatchTeacherDbHandler(id int, updates map[string]interface{}) (error, models.Teacher) {
+	db, err := ConnectDb()
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : DB connection failed!", err)
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			fmt.Println("Close failed", err)
+		}
+	}()
+
+	var existingTeacher models.Teacher
+	err = db.QueryRow("SELECT id, first_name, last_name, email, class, subject FROM teachers WHERE id = ?", id).Scan(&existingTeacher.Id, &existingTeacher.FirstName, &existingTeacher.LastName, &existingTeacher.Email, &existingTeacher.Class, &existingTeacher.Subject)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			//http.Error(w, "Teacher not found!", http.StatusNotFound)
+			fmt.Println("Err : Teacher not found", err)
+			return nil, models.Teacher{}
+		}
+		//http.Error(w, "Query failed!", http.StatusInternalServerError)
+		fmt.Println("Err : Teacher not found", err)
+		return nil, models.Teacher{}
+	}
+
+	// Apply updates using reflect;
+	teacherVal := reflect.ValueOf(&existingTeacher).Elem()
+	fmt.Println("Teacher value field @ (0) := ", teacherVal.Type().Field(0))
+	fmt.Println("Teacher value field @ (1) := ", teacherVal.Type().Field(1))
+	fmt.Println("Teacher value field @ (2) := ", teacherVal.Type().Field(2))
+
+	teacherType := teacherVal.Type() // this will store the teacher type (models.Teacher)
+	for k, v := range updates {
+		for i := 0; i < teacherVal.NumField(); i++ {
+			field := teacherType.Field(i)
+			fmt.Println(field.Tag.Get("json"), field.Name)
+			if field.Tag.Get("json") == k+",omitempty" {
+				if teacherVal.Field(i).CanSet() {
+					teacherVal.Field(i).Set(reflect.ValueOf(v).Convert(teacherVal.Field(i).Type()))
+				}
+			}
+		}
+	}
+
+	_, err = db.Exec("UPDATE teachers SET first_name = ?, last_name = ?, class = ?, subject = ?, email = ? WHERE id = ?", existingTeacher.FirstName, existingTeacher.LastName, existingTeacher.Class, existingTeacher.Subject, existingTeacher.Email, existingTeacher.Id)
+	if err != nil {
+		//http.Error(w, "Update failed!", http.StatusInternalServerError)
+		fmt.Println("Err : Update failed", err)
+		return nil, models.Teacher{}
+	}
+	return err, existingTeacher
+}
+
+func DeleteTeacherDbHandler(id int) error {
+	db, err := ConnectDb()
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : DB connection failed!", err)
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			fmt.Println("Close failed", err)
+		}
+	}()
+
+	res, err := db.Exec("DELETE FROM teachers WHERE id = ?", id)
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : Delete failed", err)
+		return err
+	}
+
+	fmt.Println(res.RowsAffected())
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		//http.Error(w, "Err retrieving deleted row!", http.StatusInternalServerError)
+		fmt.Println("Err : RowsAffected failed", err)
+		return err
+	}
+
+	if rowsAffected == 0 {
+		//http.Error(w, "Teacher not found!", http.StatusNotFound)
+		fmt.Println("Err : Teacher not found", err)
+	}
+	return nil
+}
+
+func DeleteTeachersDbHandler(ids []int) (error, []int) {
+	db, err := ConnectDb()
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : DB connection failed!", err)
+		return err, nil
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			fmt.Println("Close failed", err)
+			return
+		}
+	}()
+
+	tx, err := db.Begin()
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : Begin failed", err)
+		return err, nil
+	}
+
+	statement, err := tx.Prepare("DELETE FROM teachers WHERE id = ?")
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		tx.Rollback()
+		fmt.Println("Err : Prepare failed", err)
+		return err, nil
+	}
+
+	defer statement.Close()
+
+	deletedIds := []int{}
+	for _, id := range ids {
+		res, err := statement.Exec(id)
+		if err != nil {
+			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			tx.Rollback()
+			fmt.Println("Err : Delete failed", err)
+			return err, nil
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			tx.Rollback()
+			fmt.Println("Err : RowsAffected failed", err)
+			return err, nil
+		}
+
+		// If teacher was deleted, then push the id to deletedIds[];
+		if rowsAffected > 0 {
+			deletedIds = append(deletedIds, id)
+		}
+
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Err : Commit failed", err)
+		return err, nil
+	}
+
+	if len(deletedIds) == 0 {
+
+		tx.Rollback()
+		//http.Error(w, fmt.Sprintf("ID(s) %d does not exist", ids), http.StatusNotFound)
+		fmt.Println("Err : Teachers not found", err)
+		return err, nil
+
+	}
+	return err, deletedIds
 }
