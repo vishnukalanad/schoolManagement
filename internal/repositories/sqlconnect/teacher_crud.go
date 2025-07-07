@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"reflect"
@@ -156,7 +157,7 @@ func GetTeacherDbHandler(idStr string) (error, models.Teacher) {
 	return err, teacher
 }
 
-func AddTeacherDbHandler(r *http.Request, newTeachers []models.Teacher) (error, []models.Teacher) {
+func AddTeacherDbHandler(w http.ResponseWriter, r *http.Request, newTeachers []models.Teacher) (error, []models.Teacher) {
 	db, err := ConnectDb()
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -168,10 +169,21 @@ func AddTeacherDbHandler(r *http.Request, newTeachers []models.Teacher) (error, 
 		if err != nil {
 			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			fmt.Println("2:Close failed", err)
+			return
 		}
 	}()
 
-	stmt, err := db.Prepare("INSERT INTO teachers (first_name, last_name, email, class, subject) VALUES (?,?,?,?,?)")
+	var rawTeachers []map[string]interface{}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		fmt.Println("Error at reading body", err)
+		return utils.HandleError(err, "Error at reading body!"), nil
+	}
+
+	defer r.Body.Close()
+
+	//stmt, err := db.Prepare("INSERT INTO teachers (first_name, last_name, email, class, subject) VALUES (?,?,?,?,?)")
+	stmt, err := db.Prepare(generateInsertQuery(models.Teacher{}))
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		fmt.Println("Insert failed", err)
@@ -186,17 +198,69 @@ func AddTeacherDbHandler(r *http.Request, newTeachers []models.Teacher) (error, 
 		}
 	}()
 
-	err = json.NewDecoder(r.Body).Decode(&newTeachers)
+	//err = json.NewDecoder(r.Body).Decode(&rawTeachers)
+	err = json.Unmarshal(body, &rawTeachers)
 	if err != nil {
 		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		fmt.Println("Insert failed", err)
-		return utils.HandleError(err, "Err : Insert failed!"), nil
+		fmt.Println("Invalid Request", err)
+		return utils.HandleError(err, "Err : Invalid Request!"), nil
+	}
+
+	// Handling any unwanted additional fields sent in request body;
+	// Send invalid request body response in such cases to block unwanted stuff;
+	fields := GetFieldNames(models.Teacher{})
+
+	// Make a map of allowed tags;
+	allowedTags := make(map[string]struct{})
+	for _, field := range fields {
+		allowedTags[field] = struct{}{}
+	}
+
+	for _, teacher := range rawTeachers {
+		for key := range teacher {
+			_, ok := allowedTags[key]
+			if !ok {
+				http.Error(w, "Invalid request body!", http.StatusBadRequest)
+				return err, nil
+			}
+		}
+	}
+
+	//err = json.NewDecoder(r.Body).Decode(&newTeachers)
+	err = json.Unmarshal(body, &newTeachers)
+	if err != nil {
+		//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		fmt.Println("Invalid request", err)
+		return utils.HandleError(err, "Err : Invalid request!"), nil
+	}
+
+	fmt.Println(newTeachers)
+	// This is the handle the validation for empty values passed;
+	for _, teacher := range newTeachers {
+		//if teacher.FirstName == "" || teacher.LastName == "" || teacher.Class == "" || teacher.Subject == "" || teacher.Email == "" {
+		//	http.Error(w, "All fields are required", http.StatusBadRequest)
+		//	return err, nil
+		//}
+
+		val := reflect.ValueOf(teacher)
+		for i := 0; i < val.NumField(); i++ {
+			field := val.Field(i)
+			if field.Kind() == reflect.String && field.String() == "" {
+				fmt.Println("field.Kind() : ", field.Kind())
+				fmt.Println("reflect.String : ", reflect.String)
+				fmt.Println("field.String()", field.String())
+				http.Error(w, "All fields are required", http.StatusBadRequest)
+				return err, nil
+			}
+		}
 	}
 
 	addedTeachers := make([]models.Teacher, len(newTeachers))
 
 	for i, teacher := range newTeachers {
-		res, err := stmt.Exec(teacher.FirstName, teacher.LastName, teacher.Email, teacher.Class, teacher.Subject)
+		//res, err := stmt.Exec(teacher.FirstName, teacher.LastName, teacher.Email, teacher.Class, teacher.Subject)
+		values := getStructValues(teacher)
+		res, err := stmt.Exec(values...)
 		if err != nil {
 			//http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			fmt.Println("Err : Data insertion to DB failed!", err)
@@ -214,6 +278,55 @@ func AddTeacherDbHandler(r *http.Request, newTeachers []models.Teacher) (error, 
 
 	}
 	return err, addedTeachers
+}
+
+func GetFieldNames(model interface{}) []string {
+	val := reflect.TypeOf(model)
+	var fields []string
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldToAdd := strings.TrimSuffix(field.Tag.Get("json"), ",omitempty")
+		fields = append(fields, fieldToAdd) // Getting json tags
+	}
+	return fields
+}
+
+func generateInsertQuery(model interface{}) string {
+	modelType := reflect.TypeOf(model)
+	var columns, placeholders string
+	for i := 0; i < modelType.NumField(); i++ {
+		dbTag := modelType.Field(i).Tag.Get("db")
+		//fmt.Println(dbTag)
+		dbTag = strings.TrimSuffix(dbTag, ",omitempty")
+		if dbTag != "" && dbTag != "id" {
+			if columns != "" {
+				columns += ", "
+				placeholders += ", "
+			}
+			columns += dbTag
+			placeholders += "?"
+		}
+	}
+
+	fmt.Printf("INSERT INTO teachers (%s) VALUES (%s)", columns, placeholders)
+	return fmt.Sprintf("INSERT INTO teachers (%s) VALUES (%s)", columns, placeholders)
+}
+
+func getStructValues(model interface{}) []interface{} {
+	modelValue := reflect.ValueOf(model)
+	modelType := reflect.TypeOf(model)
+
+	var values []interface{}
+
+	for i := 0; i < modelType.NumField(); i++ {
+		dbTag := modelType.Field(i).Tag.Get("db")
+		if dbTag != "" && dbTag != "id,omitempty" {
+			//fmt.Println("\n", dbTag, modelValue, modelValue.Field(i), modelValue.Field(i).Interface())
+			values = append(values, modelValue.Field(i).Interface())
+		}
+	}
+	fmt.Println("\nValues : ", values)
+	return values
 }
 
 func UpdateTeachersDbHandler(id int, updatedTeachers models.Teacher) error {

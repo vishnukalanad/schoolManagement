@@ -68,7 +68,8 @@ func GetTeacherHandler(w http.ResponseWriter, r *http.Request) {
 // AddTeachersHandler - handles the incoming post requests;
 func AddTeachersHandler(w http.ResponseWriter, r *http.Request) {
 	var newTeachers []models.Teacher
-	err, addedTeachers := sqlconnect.AddTeacherDbHandler(r, newTeachers)
+
+	err, addedTeachers := sqlconnect.AddTeacherDbHandler(w, r, newTeachers)
 	if err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
