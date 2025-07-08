@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"schoolManagement/internal/models"
 	"schoolManagement/internal/repositories/sqlconnect"
+	"strconv"
 )
 
 // Students Handlers;
@@ -72,8 +73,25 @@ func AddStudentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// PatchStudentsHandler - Handles patch students operation;
 func PatchStudentsHandler(w http.ResponseWriter, r *http.Request) {
+	var updates []map[string]interface{}
+	err := json.NewDecoder(r.Body).Decode(&updates)
+	if err != nil {
+		fmt.Println("Error: Failed to decode response body!")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
+	err = sqlconnect.PatchStudentsDbHandler(updates)
+	if err != nil {
+		fmt.Println("Error: Failed to patch students!")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func DeleteStudentsHandler(w http.ResponseWriter, r *http.Request) {
@@ -86,12 +104,44 @@ func GetStudentHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func AddStudentHandler(w http.ResponseWriter, r *http.Request) {
-
-}
-
 func UpdateStudentHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract the ID from query params;
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		fmt.Println("Err : ID parsing failed!")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
+	var updatedStudent models.Student
+	// Decodes the request body;
+	err = json.NewDecoder(r.Body).Decode(&updatedStudent)
+	if err != nil {
+		fmt.Println("Err : Student JSON decoding failed!")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Update CRUD operation;
+	err, student := sqlconnect.UpdateStudentsDbHandler(id, updatedStudent)
+	if err != nil {
+		fmt.Println("Err : Student Update Failed!")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare and send the response;
+	w.Header().Set("Content-Type", "application/json")
+	response := struct {
+		Status   string           `json:"status"`
+		Message  string           `json:"message"`
+		Students []models.Student `json:"students"`
+	}{
+		Status:   "Success",
+		Message:  "Student details updated successfully!",
+		Students: student,
+	}
+	err = json.NewEncoder(w).Encode(response)
 }
 
 func PatchStudentHandler(w http.ResponseWriter, r *http.Request) {

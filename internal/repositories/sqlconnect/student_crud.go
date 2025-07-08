@@ -1,7 +1,9 @@
 package sqlconnect
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -9,144 +11,7 @@ import (
 	"reflect"
 	"schoolManagement/internal/models"
 	"schoolManagement/pkg/utils"
-	"strings"
 )
-
-// ******** General Helper Functions ********
-
-// getFilters - Gets the filters from query params;
-func getFilters(r *http.Request, query string, args []interface{}) (string, []interface{}) {
-	params := map[string]string{
-		"firstname": "first_name",
-		"lastname":  "last_name",
-		"class":     "class",
-		"email":     "email",
-	}
-
-	for param, dbField := range params {
-		value := r.URL.Query().Get(param)
-		if value != "" {
-			query += " AND " + dbField + " = ?"
-			args = append(args, value)
-		}
-	}
-
-	return query, args
-}
-
-// sortQueryParams - Looks for any sortBy params in the request and updates the query string;
-func sortQueryParams(r *http.Request, query string) string {
-
-	// Takes the sortBy query param from request;
-	sortParams := r.URL.Query()["sortBy"]
-	if len(sortParams) > 0 {
-		// Adds order by to sql query;
-		query += " order by"
-
-		// Loops through the sort params;
-		for i, val := range sortParams {
-
-			// Accepts the sortBy params as param:order format;
-			// Splits based on the : and extracts the key value pairs;
-			parts := strings.Split(val, ":")
-
-			// Skips the iteration if no sort order provided;
-			if len(parts) != 2 {
-				continue
-			}
-
-			// Stores the field name and sort order in 2 variables;
-			field, order := parts[0], parts[1]
-
-			// Validates to see if the provided sort and field values are valid;
-			if !isValidSortType(order) || !isFieldValid(field) {
-				continue
-			}
-
-			// Updates the query string appropriately;
-			if i > 0 {
-				query += ", "
-			}
-
-			query += " " + field + " " + order
-		}
-	}
-	// Return the final query string;
-	return query
-}
-
-// isValidSortType - Validates the sort order;
-func isValidSortType(order string) bool {
-	return order == "asc" || order == "desc"
-}
-
-// isFieldValid - Validates the query fields;
-func isFieldValid(field string) bool {
-	fields := map[string]bool{
-		"firstname": true,
-		"lastname":  true,
-		"class":     true,
-		"email":     true,
-	}
-
-	return fields[field]
-}
-
-// getInsertQuery - Generates the insert query for students;
-func getInsertQuery(model interface{}) string {
-	types := reflect.TypeOf(model)
-	var cols, placeholders string
-	for i := 0; i < types.NumField(); i++ {
-		dbTag := types.Field(i).Tag.Get("db")
-		dbTag = strings.TrimSuffix(dbTag, ",omitempty")
-		fmt.Println(dbTag)
-		if dbTag != "" && dbTag != "id" {
-			if cols != "" {
-				cols += ", "
-				placeholders += ", "
-			}
-			cols += dbTag
-			placeholders += "?"
-		}
-	}
-
-	fmt.Printf("Generated query : insert into students (%s) values (%s)", cols, placeholders)
-	return fmt.Sprintf("INSERT INTO students (%s) VALUES (%s)", cols, placeholders)
-}
-
-// getFieldNames - Return the list of fields values based on the struct passed;
-func getFieldNames(model interface{}) []string {
-	val := reflect.TypeOf(model)
-	var fields []string
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		fieldToAdd := strings.TrimSuffix(field.Tag.Get("json"), ",omitempty")
-		fields = append(fields, fieldToAdd)
-	}
-
-	return fields
-}
-
-// getFieldValues - Returns the field values;
-func getFieldValues(model interface{}) []interface{} {
-	modelValue := reflect.ValueOf(model)
-	modelType := reflect.TypeOf(model)
-
-	var values []interface{}
-
-	// Loops through the modelTypes and extracts the "db" tag values from struct;
-	// Then stores the value index i to values array;
-	for i := 0; i < modelType.NumField(); i++ {
-		dbTag := modelType.Field(i).Tag.Get("db")
-		fmt.Println(dbTag)
-		if dbTag != "" && dbTag != "id,omitempty" {
-			values = append(values, modelValue.Field(i).Interface())
-		}
-	}
-
-	// Returns the final values array;
-	return values
-}
 
 // ******** DB Crud Handlers ********
 
@@ -165,11 +30,11 @@ func GetStudentDbHandler(r *http.Request) (error, []models.Student) {
 	}()
 
 	var students []models.Student
-	query := "select id, first_name, last_name, email, class from students where 1=1"
+	query := "SELECT id, first_name, last_name, email, class FROM students WHERE 1=1"
 	var args []interface{}
 
-	query, args = getFilters(r, query, args)
-	query = sortQueryParams(r, query)
+	query, args = utils.GetFilters(r, query, args)
+	query = utils.SortQueryParams(r, query)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -185,7 +50,7 @@ func GetStudentDbHandler(r *http.Request) (error, []models.Student) {
 
 	for rows.Next() {
 		var student models.Student
-		err = rows.Scan(&student.Id, student.FirstName, &student.LastName, &student.Email, &student.Class)
+		err = rows.Scan(&student.Id, &student.FirstName, &student.LastName, &student.Email, &student.Class)
 		if err != nil {
 			return utils.HandleError(err, "Err: Data retrieval failed!"), []models.Student{}
 		}
@@ -217,7 +82,7 @@ func AddStudentsDbHandler(r *http.Request) (error, []models.Student) {
 	}()
 
 	// Query statement prepare;
-	statement, err := db.Prepare(getInsertQuery(models.Student{}))
+	statement, err := db.Prepare(utils.GetInsertQuery(models.Student{}))
 	if err != nil {
 		return utils.HandleError(err, "Err: Cannot prepare statement!"), nil
 	}
@@ -239,7 +104,7 @@ func AddStudentsDbHandler(r *http.Request) (error, []models.Student) {
 
 	log.Println("\nGenerating keys for struct")
 	// Handling extra fields passed in request;
-	keys := getFieldNames(models.Student{})
+	keys := utils.GetFieldNames(models.Student{})
 
 	// Creating a map of allowed keys;
 	validKeys := make(map[string]struct{})
@@ -289,7 +154,7 @@ func AddStudentsDbHandler(r *http.Request) (error, []models.Student) {
 	log.Println("\nStatement execution begins")
 	// Loops through the incoming students arrays and executes the insert statement for store the values in DB;
 	for _, student := range students {
-		values := getFieldValues(student)
+		values := utils.GetFieldValues(student)
 		log.Println("\nField values", values)
 
 		res, err := statement.Exec(values...)
@@ -308,3 +173,123 @@ func AddStudentsDbHandler(r *http.Request) (error, []models.Student) {
 	// Returns the final students array;
 	return nil, students
 }
+
+// UpdateStudentsDbHandler - Handles the update operation of students;
+func UpdateStudentsDbHandler(id int, updatedStudent models.Student) (error, []models.Student) {
+	// Connect to DB;
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!"), []models.Student{}
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			return
+		}
+	}()
+
+	var student models.Student
+	// Fetch student details based on ID;
+	err = db.QueryRow("SELECT id, first_name, last_name, email, class FROM students WHERE id = ?", id).Scan(&student.Id, &student.FirstName, &student.LastName, &student.Email, &student.Class)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No student found!"), []models.Student{}
+		}
+		return utils.HandleError(err, "Err: Cannot get student from db!"), nil
+	}
+
+	// Execute the update query;
+	updatedStudent.Id = int(student.Id)
+	_, err = db.Exec("UPDATE students SET first_name = ?, last_name = ?, email = ?, class = ? WHERE id = ?", updatedStudent.FirstName, updatedStudent.LastName, updatedStudent.Email, updatedStudent.Class, student.Id)
+	if err != nil {
+		return utils.HandleError(err, "Err: Cannot update student in db!"), nil
+	}
+	return nil, []models.Student{updatedStudent}
+}
+
+func PatchStudentsDbHandler(students []map[string]interface{}) error {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!")
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			fmt.Println("DB Close failed!")
+			return
+		}
+	}()
+
+	log.Println("\nStarting patch students handler")
+	tx, err := db.Begin()
+	if err != nil {
+		return utils.HandleError(err, "Err: Cannot begin transaction!")
+	}
+
+	for _, student := range students {
+		id := fmt.Sprintf("%v", student["id"])
+		log.Println("\nStudent ID: ", id)
+
+		var studentFromDb models.Student
+		err = db.QueryRow("SELECT id, first_name, last_name, email, class FROM students WHERE id = ?", id).Scan(&studentFromDb.Id, &studentFromDb.FirstName, &studentFromDb.LastName, &studentFromDb.Email, &studentFromDb.Class)
+		if err != nil {
+			tx.Rollback()
+			if errors.Is(err, sql.ErrNoRows) {
+				return utils.HandleError(err, "Err: No student found!!")
+			}
+			return utils.HandleError(err, "Err: Cannot get student from db!")
+		}
+
+		studentVal := reflect.ValueOf(&studentFromDb).Elem()
+		studentType := studentVal.Type()
+
+		for k, v := range student {
+			if k == "id" {
+				continue // skips updating ID field;
+			}
+
+			// Looping through fields of student model;
+			for i := 0; i < studentVal.NumField(); i++ {
+				field := studentType.Field(i)
+				if field.Tag.Get("json") == k+",omitempty" {
+					fieldVal := studentVal.Field(i)
+
+					if fieldVal.CanSet() {
+						val := reflect.ValueOf(v)
+						if val.Type().ConvertibleTo(fieldVal.Type()) {
+							fieldVal.Set(val.Convert(fieldVal.Type()))
+						} else {
+							err = tx.Rollback()
+							if err != nil {
+								fmt.Println("Rollback failed!")
+								return utils.HandleError(err, "Err: Cannot rollback transaction!")
+							}
+
+							break
+						}
+					}
+				}
+			}
+
+			_, err = tx.Exec("UPDATE students SET first_name = ?, last_name = ?, email = ?, class = ? WHERE id = ?", studentFromDb.FirstName, studentFromDb.LastName, studentFromDb.Email, studentFromDb.Class, id)
+			if err != nil {
+				tx.Rollback()
+				if errors.Is(err, sql.ErrNoRows) {
+					return utils.HandleError(err, "Err: No student found!!")
+				}
+				return utils.HandleError(err, "Err: Cannot update student in db!")
+			}
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			return utils.HandleError(err, "Err: Cannot commit transaction!")
+		}
+	}
+
+	return nil
+}
+
+//func DeleteStudentsDbHandler(id int) (error, []models.Student) {}
