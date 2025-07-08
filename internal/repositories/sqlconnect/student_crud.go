@@ -292,4 +292,51 @@ func PatchStudentsDbHandler(students []map[string]interface{}) error {
 	return nil
 }
 
+func PatchStudentDbHandler(id int, updatedStudent map[string]interface{}) (error, models.Student) {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!"), models.Student{}
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			return
+		}
+	}()
+
+	var student models.Student
+	err = db.QueryRow("SELECT id, first_name, last_name, email, class FROM students WHERE id = ?", id).Scan(&student.Id, &student.FirstName, &student.LastName, &student.Email, &student.Class)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No student found!!"), models.Student{}
+		}
+		return utils.HandleError(err, "Err: Cannot get student from db!"), models.Student{}
+	}
+
+	studentVal := reflect.ValueOf(&student).Elem()
+	studentType := studentVal.Type()
+
+	for k, v := range updatedStudent {
+		for i := 0; i < studentVal.NumField(); i++ {
+			field := studentType.Field(i)
+			if field.Tag.Get("json") == k+",omitempty" {
+				if studentVal.Field(i).CanSet() {
+					studentVal.Field(i).Set(reflect.ValueOf(v).Convert(studentVal.Field(i).Type()))
+				}
+			}
+		}
+	}
+
+	_, err = db.Exec("UPDATE students SET first_name = ?, last_name = ?, email = ?, class = ? WHERE id = ?", student.FirstName, student.LastName, student.Email, student.Class, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No student found!!"), models.Student{}
+		}
+		return utils.HandleError(err, "Err: Cannot update student in db!"), models.Student{}
+	}
+
+	return nil, student
+}
+
 //func DeleteStudentsDbHandler(id int) (error, []models.Student) {}
