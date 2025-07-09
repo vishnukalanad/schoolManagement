@@ -625,3 +625,61 @@ func DeleteTeachersDbHandler(ids []int) (error, []int) {
 	}
 	return err, deletedIds
 }
+
+func GetStudentsByTeacherDbHandler(w http.ResponseWriter, teacherId string, students []models.Student) (error, []models.Student) {
+	db, err := ConnectDb()
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil, nil
+	}
+
+	defer db.Close()
+
+	query := "SELECT id, first_name, last_name, class, email FROM students WHERE class = (SELECT class FROM teachers WHERE id = ?)"
+	rows, err := db.Query(query, teacherId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil, nil
+	}
+
+	defer rows.Close()
+	for rows.Next() {
+		var student models.Student
+		err = rows.Scan(&student.Id, &student.FirstName, &student.LastName, &student.Class, &student.Email)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return nil, nil
+		}
+
+		students = append(students, student)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil, nil
+	}
+	return err, students
+}
+
+func GetStudentsCountByTeacherDbHandler(w http.ResponseWriter, teacherId string) (error, int) {
+	db, err := ConnectDb()
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil, 0
+	}
+
+	defer db.Close()
+
+	var count int
+	query := "SELECT COUNT(*) FROM students WHERE class = (SELECT class FROM teachers WHERE id = ?)"
+	err = db.QueryRow(query, teacherId).Scan(&count)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil, 0
+	}
+
+	return err, count
+}

@@ -339,4 +339,129 @@ func PatchStudentDbHandler(id int, updatedStudent map[string]interface{}) (error
 	return nil, student
 }
 
-//func DeleteStudentsDbHandler(id int) (error, []models.Student) {}
+func DeleteStudentsDbHandler(ids []int) (error, []int) {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!"), nil
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			return
+		}
+	}()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!"), nil
+	}
+
+	statement, err := tx.Prepare("DELETE FROM students WHERE id = ?")
+	if err != nil {
+		func() {
+			err := tx.Rollback()
+			if err != nil {
+				fmt.Println("Rollback failed!")
+				return
+			}
+		}()
+		return utils.HandleError(err, "Err: Internal server error!"), nil
+	}
+	defer func() {
+		err := statement.Close()
+		if err != nil {
+			return
+		}
+	}()
+
+	deletedIds := []int{}
+	for _, id := range ids {
+		res, err := statement.Exec(id)
+		if err != nil {
+			func() {
+				err := tx.Rollback()
+				if err != nil {
+					fmt.Println("Rollback failed!")
+					return
+				}
+			}()
+			if errors.Is(err, sql.ErrNoRows) {
+				return utils.HandleError(err, "Err: No student found!!"), deletedIds
+			}
+			return utils.HandleError(err, "Err: Cannot delete student from db!"), deletedIds
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			func() {
+				err := tx.Rollback()
+				if err != nil {
+					fmt.Println("Rollback failed!")
+					return
+				}
+			}()
+			if errors.Is(err, sql.ErrNoRows) {
+				return utils.HandleError(err, "Err: No student found!!"), deletedIds
+			}
+			return utils.HandleError(err, "Err: Failed to get affected rows count!"), deletedIds
+		}
+
+		if rowsAffected > 0 {
+			deletedIds = append(deletedIds, id)
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return utils.HandleError(err, "Err: Cannot commit transaction!"), deletedIds
+	}
+
+	if len(deletedIds) == 0 {
+		func() {
+			err := tx.Rollback()
+			if err != nil {
+				fmt.Println("Rollback failed!")
+				return
+			}
+		}()
+	}
+
+	return err, deletedIds
+}
+
+func DeleteStudentDbHandler(id int) error {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!")
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			return
+		}
+	}()
+
+	res, err := db.Exec("DELETE FROM students WHERE id = ?", id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Println("Err: No student found!")
+			return utils.HandleError(err, "Err: No student found!")
+		}
+		return utils.HandleError(err, "Err: Cannot delete student from db!")
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		fmt.Println("Err: Failed to get affected rows count!")
+		return utils.HandleError(err, "Err: Failed to get affected rows count!")
+	}
+
+	if rowsAffected == 0 {
+		fmt.Println("Err: No student found!")
+		return utils.HandleError(err, "Err: No student found!")
+	}
+
+	return err
+}

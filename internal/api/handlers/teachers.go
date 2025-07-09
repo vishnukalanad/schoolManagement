@@ -228,3 +228,58 @@ func DeleteTeachersHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(resp)
 }
+
+//----------------------
+
+func GetStudentsByTeacherHandler(w http.ResponseWriter, r *http.Request) {
+	teacherId := r.PathValue("id")
+	var students []models.Student
+
+	err, students := sqlconnect.GetStudentsByTeacherDbHandler(w, teacherId, students)
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Status   string           `json:"status"`
+		Students []models.Student `json:"students"`
+		Count    int              `json:"count"`
+	}{
+		Status:   "Success",
+		Students: students,
+		Count:    len(students),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func GetStudentsCountByTeacherHandler(w http.ResponseWriter, r *http.Request) {
+	teacherId := r.PathValue("id")
+
+	err, count := sqlconnect.GetStudentsCountByTeacherDbHandler(w, teacherId)
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Status string `json:"status"`
+		Count  int    `json:"count"`
+	}{
+		Status: "Success",
+		Count:  count,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}

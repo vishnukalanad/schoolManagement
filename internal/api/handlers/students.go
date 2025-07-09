@@ -95,7 +95,35 @@ func PatchStudentsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteStudentsHandler(w http.ResponseWriter, r *http.Request) {
+	var ids []int
+	err := json.NewDecoder(r.Body).Decode(&ids)
+	if err != nil {
+		fmt.Println("Error: Failed to decode response body!")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
+	err, deletedIds := sqlconnect.DeleteStudentsDbHandler(ids)
+	if err != nil {
+		fmt.Println("Error: Failed to delete students!")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Status string `json:"status"`
+		Ids    []int  `json:"ids"`
+	}{
+		Status: "Success",
+		Ids:    deletedIds,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // Students By ID Handlers;
@@ -173,5 +201,28 @@ func PatchStudentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteStudentHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		fmt.Println("Err : ID parsing failed!")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
 
+	err = sqlconnect.DeleteStudentDbHandler(id)
+	if err != nil {
+		fmt.Println("Error: Failed to delete students!")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Status string `json:"status"`
+		Ids    int    `json:"id"`
+	}{
+		Status: "Success",
+		Ids:    id,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(response)
 }
