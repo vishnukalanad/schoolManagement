@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -107,6 +108,30 @@ func GetInsertQuery(model interface{}) string {
 	return fmt.Sprintf("INSERT INTO students (%s) VALUES (%s)", cols, placeholders)
 }
 
+// GetExecInsertQuery - Generates the insert query for execs;
+func GetExecInsertQuery(model interface{}) string {
+	types := reflect.TypeOf(model)
+	nullSqlType := reflect.TypeOf(sql.NullString{})
+	var cols, placeholders string
+	for i := 0; i < types.NumField(); i++ {
+		dbTag := types.Field(i).Tag.Get("db")
+		dbTag = strings.TrimSuffix(dbTag, ",omitempty")
+		fieldType := types.Field(i).Type
+		fmt.Println(dbTag)
+		if dbTag != "" && dbTag != "id" && fieldType != nullSqlType {
+			if cols != "" {
+				cols += ", "
+				placeholders += ", "
+			}
+			cols += dbTag
+			placeholders += "?"
+		}
+	}
+
+	fmt.Printf("Generated query : insert into students (%s) values (%s)", cols, placeholders)
+	return fmt.Sprintf("INSERT INTO execs (%s) VALUES (%s)", cols, placeholders)
+}
+
 // GetFieldNames - Return the list of fields values based on the struct passed;
 func GetFieldNames(model interface{}) []string {
 	val := reflect.TypeOf(model)
@@ -127,12 +152,14 @@ func GetFieldValues(model interface{}) []interface{} {
 
 	var values []interface{}
 
+	nullSqlType := reflect.TypeOf(sql.NullString{})
 	// Loops through the modelTypes and extracts the "db" tag values from struct;
 	// Then stores the value index i to values array;
 	for i := 0; i < modelType.NumField(); i++ {
 		dbTag := modelType.Field(i).Tag.Get("db")
+		fieldType := modelType.Field(i).Type
 		fmt.Println(dbTag)
-		if dbTag != "" && dbTag != "id,omitempty" {
+		if dbTag != "" && dbTag != "id,omitempty" && fieldType != nullSqlType {
 			values = append(values, modelValue.Field(i).Interface())
 		}
 	}

@@ -9,7 +9,7 @@ func TeachersRouter() *http.ServeMux {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /", handlers.RootHandler)
+	//mux.HandleFunc("GET /", handlers.RootHandler)
 
 	// General handlers for teachers route;
 	mux.HandleFunc("GET /teachers", handlers.GetTeachersHandler)

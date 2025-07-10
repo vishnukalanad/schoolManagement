@@ -15,8 +15,8 @@ import (
 
 // ******** DB Crud Handlers ********
 
-// GetStudentDbHandler - Fetches students list from DB;
-func GetStudentDbHandler(r *http.Request) (error, []models.Student) {
+// GetStudentsDbHandler - Fetches students list from DB;
+func GetStudentsDbHandler(r *http.Request) (error, []models.Student) {
 	db, err := ConnectDb()
 	if err != nil {
 		return utils.HandleError(err, "Err: Internal server error!"), []models.Student{}
@@ -59,6 +59,30 @@ func GetStudentDbHandler(r *http.Request) (error, []models.Student) {
 	}
 
 	return nil, students
+}
+
+func GetStudentHandler(id int) (error, models.Student) {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!"), models.Student{}
+	}
+
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			return
+		}
+	}()
+
+	var student models.Student
+	err = db.QueryRow("SELECT id, first_name, last_name, email, class FROM students WHERE id = ?", id).Scan(&student.Id, &student.FirstName, &student.LastName, &student.Email, &student.Class)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No records found!"), models.Student{}
+		}
+		return utils.HandleError(err, "Err: Data retrieval failed!"), models.Student{}
+	}
+	return nil, student
 }
 
 // AddStudentsDbHandler - Handles the crud operation to store new student details in table;
@@ -283,10 +307,10 @@ func PatchStudentsDbHandler(students []map[string]interface{}) error {
 			}
 		}
 
-		err = tx.Commit()
-		if err != nil {
-			return utils.HandleError(err, "Err: Cannot commit transaction!")
-		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		return utils.HandleError(err, "Err: Cannot commit transaction!")
 	}
 
 	return nil

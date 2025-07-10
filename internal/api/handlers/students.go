@@ -17,7 +17,7 @@ func GetStudentsHandler(w http.ResponseWriter, r *http.Request) {
 	var students []models.Student
 
 	// Calls the DB handler to perform query and get data;
-	err, students := sqlconnect.GetStudentDbHandler(r)
+	err, students := sqlconnect.GetStudentsDbHandler(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -129,7 +129,32 @@ func DeleteStudentsHandler(w http.ResponseWriter, r *http.Request) {
 // Students By ID Handlers;
 
 func GetStudentHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err, student := sqlconnect.GetStudentHandler(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
+	response := struct {
+		Status  string         `json:"status"`
+		Student models.Student `json:"student"`
+	}{
+		Status:  "Success",
+		Student: student,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func UpdateStudentHandler(w http.ResponseWriter, r *http.Request) {
