@@ -55,7 +55,8 @@ func main() {
 
 	// For this server we will use mw.SecurityHandler alone now;
 	router := routers.MainRouter()
-	secureMux := mw.JWTMiddleware(mw.SecurityHandler(router))
+	jwtMiddleware := mw.MiddleWareExcludePaths(mw.JWTMiddleware, "/execs/login")
+	secureMux := jwtMiddleware(mw.SecurityHandler(router))
 	//secureMux := (mw.SecurityHandler(router))
 
 	server := &http.Server{

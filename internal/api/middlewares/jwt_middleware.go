@@ -19,13 +19,17 @@ func JWTMiddleware(next http.Handler) http.Handler {
 		token, err := r.Cookie("Bearer")
 		if err != nil {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 		jwtSecret := os.Getenv("JWT_SECRET")
 
 		parsedToken, err := jwt.Parse(token.Value, func(token *jwt.Token) (interface{}, error) {
 			// hmacSampleSecret is a []byte containing your secret, e.g. []byte("my_secret_key")
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
 			return []byte(jwtSecret), nil
-		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+		})
 		if err != nil {
 			if errors.Is(err, jwt.ErrTokenExpired) {
 				http.Error(w, "Token expired!", http.StatusUnauthorized)
@@ -42,8 +46,6 @@ func JWTMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Token invalid!", http.StatusUnauthorized)
 			log.Println("Invalid JWT token")
 		}
-
-		fmt.Println("Parsed Token : ", parsedToken)
 
 		claims, ok := parsedToken.Claims.(jwt.MapClaims)
 		if !ok {
