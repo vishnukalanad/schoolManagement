@@ -303,6 +303,49 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func UpdatePasswordHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	userId, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var request models.UpdatePasswordRequest
+	err = json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if request.CurrentPassword == "" || request.NewPassword == "" {
+		http.Error(w, "Err: Current or new password is empty!", http.StatusBadRequest)
+		return
+	}
+
+	err, token := sqlconnect.UpdatePasswordDbHandler(userId, request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Status string `json:"status"`
+		Token  string `json:"token"`
+	}{
+		Status: "Success",
+		Token:  token,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+}
+
 // ExecsHandler - Handler for execs route;
 func ExecsHandler(w http.ResponseWriter, r *http.Request) {
 

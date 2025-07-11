@@ -24,6 +24,6 @@ func ExecsRouter() *http.ServeMux {
 	mux.HandleFunc("POST /execs/logout", handlers.LogoutHandler)
 	mux.HandleFunc("POST /execs/forgot-password", handlers.ExecsHandler)
 	mux.HandleFunc("POST /execs/reset-password/reset/{resetCode}", handlers.ExecsHandler)
-	mux.HandleFunc("POST /execs/{id}/update-password", handlers.ExecsHandler)
+	mux.HandleFunc("POST /execs/{id}/update-password", handlers.UpdatePasswordHandler)
 	return mux
 }

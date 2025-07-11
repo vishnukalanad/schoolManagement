@@ -1,19 +1,18 @@
 package sqlconnect
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/crypto/argon2"
 	"io"
 	"log"
 	"net/http"
 	"reflect"
 	"schoolManagement/internal/models"
 	"schoolManagement/pkg/utils"
+	"strconv"
+	"time"
 )
 
 func GetExecsDbHandler(r *http.Request) (error, []models.Exec) {
@@ -102,27 +101,6 @@ func AddExecsDbHandler(r *http.Request) (error, []models.Exec) {
 	}
 
 	log.Println("\nGenerating keys for struct")
-	// Handling extra fields passed in request;
-	//keys := utils.GetFieldNames(models.Exec{})
-
-	//// Creating a map of allowed keys;
-	//validKeys := make(map[string]struct{})
-	//for _, key := range keys {
-	//	validKeys[key] = struct{}{}
-	//}
-
-	//log.Println("\nValidating request body", keys)
-	//log.Println("\n*********", validKeys)
-	//for _, exec := range execRaw {
-	//	log.Println("\nExecuting EXEC : ", exec)
-	//	for key := range exec {
-	//		log.Println("\nExecuting KEY : ", exec[key])
-	//		_, ok := validKeys[key]
-	//		if !ok {
-	//			return utils.HandleError(err, "Err: Internal server error! Key validation failed"), nil
-	//		}
-	//	}
-	//}
 
 	fmt.Println("Received exec details : ", string(body))
 
@@ -162,19 +140,10 @@ func AddExecsDbHandler(r *http.Request) (error, []models.Exec) {
 	for _, exec := range execs {
 		log.Println("\nStarting password hashing")
 
-		salt := make([]byte, 16)
-		_, err = rand.Read(salt)
+		encodedHash, err := utils.HashPassword(exec.Password)
 		if err != nil {
-			return utils.HandleError(err, "Err: Cannot generate salt!"), nil
+			return utils.HandleError(err, "Err: Cannot hash password!"), nil
 		}
-
-		// Password encoding;
-		hash := argon2.IDKey([]byte(exec.Password), salt, 1, 60*1024, 4, 32)
-		saltBase64 := base64.StdEncoding.EncodeToString(salt)
-		hashBase64 := base64.StdEncoding.EncodeToString(hash)
-
-		encodedHash := fmt.Sprintf("%s.%s", saltBase64, hashBase64)
-		exec.Password = encodedHash
 
 		log.Println("\nPassword : ", exec.Password, encodedHash)
 
@@ -405,4 +374,48 @@ func LoginDbHandler(username string, exec *models.Exec) error {
 		return utils.HandleError(err, "Err: Cannot get records from db!")
 	}
 	return nil
+}
+
+func UpdatePasswordDbHandler(userId int, request models.UpdatePasswordRequest) (error, string) {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!"), ""
+	}
+
+	var username, password, role string
+	err = db.QueryRow("select username, password, role from execs where id = ?", userId).Scan(&username, &password, &role)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No records found!!"), ""
+		}
+		return utils.HandleError(err, "Err: Cannot get records from db!"), ""
+	}
+
+	err = utils.PasswordValidate(password, request.CurrentPassword)
+	if err != nil {
+		return utils.HandleError(err, "Err: Current password incorrect!"), ""
+	}
+
+	hashedPass, err := utils.HashPassword(request.NewPassword)
+	if err != nil {
+		return utils.HandleError(err, "Err: Cannot hash password!"), ""
+	}
+
+	currentTime := time.Now().Format(time.RFC3339)
+
+	_, err = db.Exec("update execs set password = ?, password_changed_at = ? where id = ?", hashedPass, currentTime, userId)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No records found!!"), ""
+		}
+		return utils.HandleError(err, "Err: Cannot update records from db!"), ""
+	}
+
+	idStr := strconv.Itoa(userId)
+	token, err := utils.SignToken(idStr, username, role)
+	if err != nil {
+		return utils.HandleError(err, "Err: Cannot sign token!"), ""
+	}
+
+	return nil, token
 }
