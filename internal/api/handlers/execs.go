@@ -381,7 +381,8 @@ func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	minutes := time.Duration(duration)
+	minutes := time.Duration(duration) * time.Minute
+	log.Println("Duration : ", minutes)
 	expiry := time.Now().Add(minutes).Format(time.RFC3339)
 	tokenBytes := make([]byte, 32)
 
@@ -391,13 +392,8 @@ func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println("Token bytes : ", tokenBytes)
 	token := hex.EncodeToString(tokenBytes)
-	log.Println("Token generated : ", token)
-
 	hashedToken := sha256.Sum256(tokenBytes)
-	log.Println("Hashed token : ", hashedToken)
-
 	hashedTokenString := hex.EncodeToString(hashedToken[:])
 
 	err = sqlconnect.ForgotPasswordUpdateDbHandler(exec, hashedTokenString, expiry)
@@ -429,6 +425,60 @@ func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Dial and send", err)
 
 	fmt.Fprintf(w, "Password reset link has beed shared to %s!", request.Email)
+}
+
+func ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("resetCode")
+	type request struct {
+		NewPassword     string `json:"newPassword"`
+		ConfirmPassword string `json:"confirmPassword"`
+	}
+
+	var req request
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Err: Invalid request body!", http.StatusBadRequest)
+		return
+	}
+
+	// Checks for empty password;
+	if req.NewPassword == "" || req.ConfirmPassword == "" {
+		http.Error(w, "Err: Invalid request body!", http.StatusBadRequest)
+	}
+
+	// Check if password and confirm password matches;
+	if req.NewPassword != req.ConfirmPassword {
+		http.Error(w, "Err: Password mismatch!", http.StatusBadRequest)
+	}
+
+	var exec models.Exec
+	err = sqlconnect.ResetPasswordDbHandler(token, &exec)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Hashing the password;
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	err = sqlconnect.ForgetPasswordResetDbHandler(&exec, hashedPassword)
+	if err != nil {
+		http.Error(w, "Err: Password reset failed!", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}{
+		Status:  "Success",
+		Message: "Password updated successfully!",
+	})
 }
 
 // ExecsHandler - Handler for execs route;

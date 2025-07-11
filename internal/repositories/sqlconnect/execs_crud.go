@@ -1,7 +1,9 @@
 package sqlconnect
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -443,6 +445,7 @@ func ForgotPasswordDbHandler(email string, exec *models.Exec) error {
 	return nil
 }
 
+// ForgotPasswordUpdateDbHandler - Handler to handle the queries to update the password directly;
 func ForgotPasswordUpdateDbHandler(exec models.Exec, hashedToken string, expiry string) error {
 	db, err := ConnectDb()
 	if err != nil {
@@ -466,5 +469,67 @@ func ForgotPasswordUpdateDbHandler(exec models.Exec, hashedToken string, expiry 
 
 	log.Println("DB update done for password reset expiry time and token!")
 
+	return nil
+}
+
+// ResetPasswordDbHandler - Handler to select the user for password reset based on reset link;
+func ResetPasswordDbHandler(token string, exec *models.Exec) error {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!")
+	}
+
+	defer func() {
+		er := db.Close()
+		if er != nil {
+			return
+		}
+	}()
+
+	bytes, err := hex.DecodeString(token)
+	if err != nil {
+		return utils.HandleError(err, "Err: Cannot decode token!")
+	}
+
+	hashedToken := sha256.Sum256(bytes)
+	hashedTokenString := hex.EncodeToString(hashedToken[:])
+
+	currTime := time.Now().Format(time.RFC3339)
+	log.Println("Executing select query (Password recovery)", currTime, hashedTokenString)
+	query := "select id, email from execs where password_reset_token = ? and password_reset_expiry > ?"
+	err = db.QueryRow(query, hashedTokenString, currTime).Scan(&exec.Id, &exec.Email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No records found!!")
+		}
+		return utils.HandleError(err, "Err: Link expired!")
+	}
+
+	return nil
+}
+
+// ForgetPasswordResetDbHandler - Handles the update query for reset password based on password reset link;
+func ForgetPasswordResetDbHandler(exec *models.Exec, hashedPassword string) error {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!")
+	}
+
+	defer func() {
+		er := db.Close()
+		if er != nil {
+			return
+		}
+	}()
+
+	log.Println("Executing update query")
+	query := "update execs set password = ?, password_changed_at = ?, password_reset_token = NULL, password_reset_expiry = NULL where id = ?"
+	_, err = db.Exec(query, hashedPassword, time.Now().Format(time.RFC3339), exec.Id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No records found!!")
+		}
+		return utils.HandleError(err, "Err: Password update failed!")
+	}
 	return nil
 }
