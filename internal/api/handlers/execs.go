@@ -1,10 +1,15 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/go-mail/mail/v2"
 	"log"
 	"net/http"
+	"os"
 	"schoolManagement/internal/models"
 	"schoolManagement/internal/repositories/sqlconnect"
 	"schoolManagement/pkg/utils"
@@ -344,6 +349,86 @@ func UpdatePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Email string `json:"email"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Err: Bad request!", http.StatusBadRequest)
+		return
+	}
+	log.Println("Request : ", request)
+
+	err = r.Body.Close()
+	if err != nil {
+		http.Error(w, "Err: Bad request!", http.StatusBadRequest)
+	}
+
+	var exec models.Exec
+	err = sqlconnect.ForgotPasswordDbHandler(request.Email, &exec)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	duration, err := strconv.Atoi(os.Getenv("RESET_TOKEN_EXPIRY"))
+	if err != nil {
+		http.Error(w, "Err: Failed to send password reset email!", http.StatusInternalServerError)
+		return
+	}
+
+	minutes := time.Duration(duration)
+	expiry := time.Now().Add(minutes).Format(time.RFC3339)
+	tokenBytes := make([]byte, 32)
+
+	_, err = rand.Read(tokenBytes)
+	if err != nil {
+		http.Error(w, "Err: Failed to send password reset email!", http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("Token bytes : ", tokenBytes)
+	token := hex.EncodeToString(tokenBytes)
+	log.Println("Token generated : ", token)
+
+	hashedToken := sha256.Sum256(tokenBytes)
+	log.Println("Hashed token : ", hashedToken)
+
+	hashedTokenString := hex.EncodeToString(hashedToken[:])
+
+	err = sqlconnect.ForgotPasswordUpdateDbHandler(exec, hashedTokenString, expiry)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Sending email;
+	resetUrl := fmt.Sprintf("https://localhost:3000/execs/reset-password/reset/%s", token)
+	message := fmt.Sprintf("Forgot your password? Reset your password using the following link,\n%s\nThis reset link is valid for %d minutes!", resetUrl, duration)
+
+	m := mail.NewMessage()
+	m.SetHeader("From", "schooladmin@school.com")
+	m.SetHeader("To", request.Email)
+	m.SetHeader("Subject", "Password reset link")
+	m.SetBody("text/html", message)
+
+	log.Println("Email generated : ", message)
+	log.Println("Sending email to ", request.Email)
+
+	d := mail.NewDialer("localhost", 1025, "", "")
+	err = d.DialAndSend(m)
+	if err != nil {
+		http.Error(w, "Err: Mail sending failed!", http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("Dial and send", err)
+
+	fmt.Fprintf(w, "Password reset link has beed shared to %s!", request.Email)
 }
 
 // ExecsHandler - Handler for execs route;

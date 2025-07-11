@@ -419,3 +419,52 @@ func UpdatePasswordDbHandler(userId int, request models.UpdatePasswordRequest) (
 
 	return nil, token
 }
+
+func ForgotPasswordDbHandler(email string, exec *models.Exec) error {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!")
+	}
+
+	defer func() {
+		er := db.Close()
+		if er != nil {
+			return
+		}
+	}()
+
+	err = db.QueryRow("select id from execs where email = ?", email).Scan(&exec.Id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No records found!!")
+		}
+		return utils.HandleError(err, "Err: Cannot get records from db!")
+	}
+	return nil
+}
+
+func ForgotPasswordUpdateDbHandler(exec models.Exec, hashedToken string, expiry string) error {
+	db, err := ConnectDb()
+	if err != nil {
+		return utils.HandleError(err, "Err: Internal server error!")
+	}
+	defer func() {
+		er := db.Close()
+		if er != nil {
+			return
+		}
+	}()
+
+	log.Println("Executing query", expiry, hashedToken, exec.Id)
+	_, err = db.Exec("update execs set password_reset_expiry = ?, password_reset_token = ? where id = ?", expiry, hashedToken, exec.Id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return utils.HandleError(err, "Err: No records found!!")
+		}
+		return utils.HandleError(err, "Err: Cannot update records from db!")
+	}
+
+	log.Println("DB update done for password reset expiry time and token!")
+
+	return nil
+}
