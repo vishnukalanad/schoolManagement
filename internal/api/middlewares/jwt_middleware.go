@@ -8,9 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"schoolManagement/pkg/utils"
 )
-
-type ContextKey string
 
 func JWTMiddleware(next http.Handler) http.Handler {
 	fmt.Println("-------------( JWT MIDDLEWARE STARTED )-------------")
@@ -54,10 +53,10 @@ func JWTMiddleware(next http.Handler) http.Handler {
 		}
 
 		// ContextKey is nothing but a custom type which actually is a string; this is to prevent compiler warning saying not to use string for keys in context;
-		ctx := context.WithValue(r.Context(), ContextKey("role"), claims["role"])
-		ctx = context.WithValue(ctx, ContextKey("expiry"), claims["exp"])
-		ctx = context.WithValue(ctx, ContextKey("username"), claims["user"])
-		ctx = context.WithValue(ctx, ContextKey("userid"), claims["uid"])
+		ctx := context.WithValue(r.Context(), utils.ContextKey("role"), claims["role"])
+		ctx = context.WithValue(ctx, utils.ContextKey("expiry"), claims["exp"])
+		ctx = context.WithValue(ctx, utils.ContextKey("username"), claims["user"])
+		ctx = context.WithValue(ctx, utils.ContextKey("userid"), claims["uid"])
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 		fmt.Println("-------------( SENT RESPONSE FROM JWT MIDDLEWARE )-------------")

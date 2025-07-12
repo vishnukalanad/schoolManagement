@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"schoolManagement/internal/models"
 	"schoolManagement/internal/repositories/sqlconnect"
+	"schoolManagement/pkg/utils"
 	"strconv"
 )
 
@@ -260,8 +261,14 @@ func GetStudentsByTeacherHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetStudentsCountByTeacherHandler(w http.ResponseWriter, r *http.Request) {
-	teacherId := r.PathValue("id")
 
+	_, err := utils.AuthorizeUser(r.Context().Value(utils.ContextKey("role")).(string), "admin", "manager", "staff")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	teacherId := r.PathValue("id")
 	err, count := sqlconnect.GetStudentsCountByTeacherDbHandler(w, teacherId)
 	if err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)

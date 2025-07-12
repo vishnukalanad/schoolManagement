@@ -11,13 +11,27 @@ import (
 
 // Students Handlers;
 
+func getPaginationParams(r *http.Request) (int, int) {
+	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+	if err != nil {
+		limit = 10
+	}
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil {
+		page = 1
+	}
+
+	return page, limit
+}
+
 // GetStudentsHandler - Handler to handle get students list route;
 func GetStudentsHandler(w http.ResponseWriter, r *http.Request) {
 	// Student array to hold the fetched students from DB;
 	var students []models.Student
+	page, limit := getPaginationParams(r)
 
 	// Calls the DB handler to perform query and get data;
-	err, students := sqlconnect.GetStudentsDbHandler(r)
+	err, students, count := sqlconnect.GetStudentsDbHandler(r, limit, page)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -30,10 +44,14 @@ func GetStudentsHandler(w http.ResponseWriter, r *http.Request) {
 		Status   string           `json:"status"`
 		Students []models.Student `json:"students"`
 		Count    int              `json:"count"`
+		Page     int              `json:"page"`
+		PageSize int              `json:"page_size"`
 	}{
 		Status:   "Success",
 		Students: students,
-		Count:    len(students),
+		Count:    count,
+		Page:     page,
+		PageSize: limit,
 	}
 
 	// Sends the response;

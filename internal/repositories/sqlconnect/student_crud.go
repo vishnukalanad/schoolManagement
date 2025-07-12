@@ -16,10 +16,10 @@ import (
 // ******** DB Crud Handlers ********
 
 // GetStudentsDbHandler - Fetches students list from DB;
-func GetStudentsDbHandler(r *http.Request) (error, []models.Student) {
+func GetStudentsDbHandler(r *http.Request, limit, page int) (error, []models.Student, int) {
 	db, err := ConnectDb()
 	if err != nil {
-		return utils.HandleError(err, "Err: Internal server error!"), []models.Student{}
+		return utils.HandleError(err, "Err: Internal server error!"), []models.Student{}, 0
 	}
 
 	defer func() {
@@ -34,11 +34,18 @@ func GetStudentsDbHandler(r *http.Request) (error, []models.Student) {
 	var args []interface{}
 
 	query, args = utils.GetFilters(r, query, args)
+
+	// Adding pagination;
+	offset := (page - 1) * limit
+	query += " LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
 	query = utils.SortQueryParams(r, query)
+
+	log.Println(query, args)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		return utils.HandleError(err, "Err: Query execution failed!"), []models.Student{}
+		return utils.HandleError(err, "Err: Query execution failed!"), []models.Student{}, 0
 	}
 
 	defer func() {
@@ -52,13 +59,20 @@ func GetStudentsDbHandler(r *http.Request) (error, []models.Student) {
 		var student models.Student
 		err = rows.Scan(&student.Id, &student.FirstName, &student.LastName, &student.Email, &student.Class)
 		if err != nil {
-			return utils.HandleError(err, "Err: Data retrieval failed!"), []models.Student{}
+			return utils.HandleError(err, "Err: Data retrieval failed!"), []models.Student{}, 0
 		}
 
 		students = append(students, student)
 	}
 
-	return nil, students
+	var totalStudents int
+	err = db.QueryRow("SELECT COUNT(*) FROM students").Scan(&totalStudents)
+	if err != nil {
+		utils.HandleError(err, "Err: Query execution failed!")
+		totalStudents = 0
+	}
+
+	return nil, students, totalStudents
 }
 
 func GetStudentHandler(id int) (error, models.Student) {

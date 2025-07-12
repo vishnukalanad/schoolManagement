@@ -57,6 +57,7 @@ func main() {
 	router := routers.MainRouter()
 	jwtMiddleware := mw.MiddleWareExcludePaths(mw.JWTMiddleware, "/execs/login", "/execs/forgot-password", "/execs/reset-password/reset", "/execs/reset-password/reset/")
 	secureMux := jwtMiddleware(mw.SecurityHandler(router))
+	//secureMux := mw.XSSMiddleware(router)
 	//secureMux := (mw.SecurityHandler(router))
 
 	server := &http.Server{
